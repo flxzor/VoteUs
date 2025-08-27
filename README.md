@@ -1,75 +1,47 @@
-# Endstone Python Example Plugin
+# VoteUs — Endstone Plugin (Python)
 
-Welcome to the example Python plugin for Endstone servers.
+A simple plugin to reward players for voting on voting sites (e.g., MCPS). Designed to run on Endstone (Python) with optimizations to avoid burdening the main thread.
 
-## Prerequisites
+## Features
+- Check vote status via external API (background thread)
+- Provide rewards through server commands when a vote is valid
+- Reuse HTTP session, pending-checks & lock, and client-side cooldown to reduce server load
+- Periodic promotional broadcasts
 
-- Python 3.9 or higher.
-- Endstone installed and set up in your Python environment.
+## Installation
+1. Download the latest `.whl` file from [GitHub Releases](https://github.com/flxzor/VoteUs/releases) and place it in the `plugins/` folder.
+2. Restart the server.
 
-## Structure Overview
+## Configuration
+A `config.toml` file will be automatically created if it doesn't exist. Example configuration:
 
 ```
-python-example-plugin/ 
-├── src/                         # Main source directory 
-│   └── endstone_example/        # Directory for the plugin package 
-│       ├── __init__.py          # Initializer for the package, importing ExamplePlugin class from example_plugin.py
-│       ├── example_plugin.py    # Implementation of ExamplePlugin class
-│       └── python_command.py    # Custom command executor for /python
-├── .gitignore                   # Git ignore rules
-├── LICENSE                      # License details
-├── README.md                    # This file
-└── pyproject.toml               # Plugin configuration file which specifies the entrypoint
+[api]
+server_key = "YOUR_SERVER_KEY"
+check_url = "https://minecraftpocket-servers.com/api/"
+
+[reward]
+commands = [
+  "give {player} diamond 1",
+  "say Thanks {player}, you just voted!"
+]
+cooldown = 86400
+
+[messages]
+already_voted = "§cYou have already claimed your reward today!"
+reward_given = "§aThanks for voting! Here's your reward."
+not_voted = "§cYou haven't voted yet."
+api_error = "§cFailed to check voting status. Try again later."
+api_not_set = "§cVoting API not configured. Contact the server owner."
+
+[voting]
+cleanup_interval = 60
 ```
 
-## Getting Started
+Ensure `server_key` and `check_url` are set according to the voting service used.
 
-1. **Clone this Repository**
-
-   ```bash
-   git clone https://github.com/EndstoneMC/python-example-plugin.git
-   ```
-
-2. **Navigate to the Cloned Directory**
-
-   ```bash
-   cd python-example-plugin
-   ```
-
-3. **Install Your Plugin**
-
-   When developing the plugin, you may want to install an editable package to your Python environment, this allows you
-   to update the codes without having to reinstall the package everytime:
-   ```bash
-   pip install -e .
-   ```
-   **NOTE: It is strongly recommended to create a virtual environment for your Endstone server and plugins. When
-   installing your plugin using `pip install`, please ensure the virtual environment is activated.**
-
-   Ensure your plugin is loaded correctly by checking the server logs or console for the log messages.
-
-4. **Package and Distribute Your Plugin**
-
-   When everything is good to go, you can package your plugin into a `.whl` (Wheel) file for easier distribution:
-
-   ```bash
-   pip install pipx
-   pipx run build --wheel
-   ```
-
-   This command will produce a `.whl` file in the `dist` directory. Copy the `.whl` file to the `plugins` directory
-   of your Endstone server. Start the Endstone server and check the logs to ensure your plugin loads and operates
-   as expected.
-
-   To publish your plugin to a package index such as PyPI, please refer to:
-    - [Using TestPyPI](https://packaging.python.org/en/latest/guides/using-testpypi/)
-    - [Publishing package distribution releases using GitHub Actions CI/CD workflows](https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/)
-
-## Documentation
-
-For a deeper dive into the Endstone API and its functionalities, refer to the main
-Endstone [documentation](https://endstone.readthedocs.io) (WIP).
+## Commands
+- `/claimvote` or `/vote`: Claim rewards after voting.
 
 ## License
-
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
