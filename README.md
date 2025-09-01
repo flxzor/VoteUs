@@ -23,10 +23,7 @@ Here is an example:
 server_key = "YOUR_SERVER_KEY"
 
 [reward]
-commands = [
-  "give {player} minecraft:diamond 1",
-  "say Thanks {player}, you just voted!"
-]
+commands = ["give {player} minecraft:diamond 1"]
 cooldown = 86400
 
 [messages]
@@ -37,6 +34,7 @@ already_claimed = "§a[VoteUs] §cYou already claimed your vote reward today!"
 api_error = "§cAPI error, contact server owner."
 cooldown_remaining = "§a[VoteUs] §cYou can vote again in {h}h {m}m {s}s."
 vote_detected = "§a[VoteUs] Use §e/claimvote §ato claim your reward."
+reward_command_failed = "§cFailed to execute reward command."
 reward_command_error = "§cError executing reward command."
 topvoters_header = "§6Top voters this month:"
 topvoters_error = "§cFailed to fetch top voters."
@@ -54,7 +52,9 @@ interval_seconds = 60
 ```
 
 ## Commands
-- `/claimvote` or `/vote`: Claim rewards after voting.
+- `/claimvote`: Claim rewards after voting.
+- `/vote` : Show the voting link.
+- `/topvoters` : Show top voters in this month
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
