@@ -4,7 +4,12 @@
 > **VoteUs Plugin** is currently **UNDER DEVELOPMENT**.  
 > Features are not final, bugs are expected, and testing/feedback is appreciated!
 
-A simple plugin to reward players for voting on Minecraft server listing sites [MinecraftPocket-Servers.com](https://minecraftpocket-servers.com). Built for **Endstone (Python)** with optimizations to avoid burdening the main server thread.
+![GitHub Release](https://img.shields.io/github/v/release/flxzor/VoteUs)
+
+![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/flxzor/VoteUs/latest/total)
+
+
+A simple plugin to reward players for voting on Minecraft server listing sites [MinecraftPocket-Servers.com](https://minecraftpocket-servers.com). Built for **Endstone (Python)**.
 
 ---
 
@@ -16,45 +21,28 @@ A simple plugin to reward players for voting on Minecraft server listing sites [
 
 ## Configuration
 A `config.toml` file is automatically created if it does not exist.  
-Here is an example:
+You can set server key in here:
 
 ```toml
 [api]
 server_key = "YOUR_SERVER_KEY"
 
+```
+
+You can set the reward in here:
+```toml
 [reward]
-commands = [
-  "give {player} minecraft:diamond 1",
-  "say Thanks {player}, you just voted!"
-]
-cooldown = 86400
-
-[messages]
-vote_link = "§a[VoteUs] §eVote for our server at §bhttps://minecraftpocket-servers.com/server/YOUR_ID/vote/"
-reward_given = "§a[VoteUs] Thanks for voting! Here's your reward."
-not_voted = "§a[VoteUs] §cYou haven't voted today!"
-already_claimed = "§a[VoteUs] §cYou already claimed your vote reward today!"
-api_error = "§cAPI error, contact server owner."
-cooldown_remaining = "§a[VoteUs] §cYou can vote again in {h}h {m}m {s}s."
-vote_detected = "§a[VoteUs] Use §e/claimvote §ato claim your reward."
-reward_command_error = "§cError executing reward command."
-topvoters_header = "§6Top voters this month:"
-topvoters_error = "§cFailed to fetch top voters."
-
-[promo]
-messages = [
-  "§a[VoteUs] §eVote & support us /vote!",
-  "§a[VoteUs] §eGet rewards every vote!",
-  "§a[VoteUs] §eYour vote means a lot!"
-]
-promo_interval_seconds = 120
-
-[autocheck]
-interval_seconds = 60
+commands = [ "give {player} diamond 1"]
+cooldown = 86400 #24h
 ```
 
 ## Commands
-- `/claimvote` or `/vote`: Claim rewards after voting.
+- `/claimvote`: Claim rewards after voting.
+- `/vote` : Show the voting link.
+- `/topvoters` : Show top voters in this month.
+- `/vote set <Server Key>` : set your server key.
+- `/vote reload` : reload config.
+- `/vote help` : show the help 
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
