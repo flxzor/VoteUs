@@ -2,13 +2,11 @@ import os
 import random
 import tomllib
 import requests
-import threading
 import time
-from typing import Dict, List, Set, Optional
+import json
 from endstone.plugin import Plugin
+from endstone.command import CommandSender, Command, CommandSenderWrapper
 from endstone import Player
-from endstone.command import CommandSender, Command
-
 
 class VoteUsPlugin(Plugin):
     api_version = "0.10"
@@ -16,179 +14,252 @@ class VoteUsPlugin(Plugin):
     prefix = "[VoteUs]"
 
     commands = {
-        "claimvote": {"description": "Claim your voting reward", "usages": ["/claimvote"], "permissions": []},
-        "vote": {"description": "Check your voting status", "usages": ["/vote"], "permissions": []}
+        "vote": {
+            "description": "Show the voting link",
+            "usages": ["/vote"],
+            "permissions": []
+        },
+        "claimvote": {
+            "description": "Claim your voting reward",
+            "usages": ["/claimvote"],
+            "permissions": []
+        },
+        "topvoters": {
+            "description": "Show top voters this month",
+            "usages": ["/topvoters"],
+            "permissions": []
+        }
     }
-    permissions = {}
-
-    voteus_config: Dict
-    _last_claim: Dict[str, float]
-    session: Optional[requests.Session]
-    _pending_checks: Set[str]
-    _lock: threading.Lock
 
     def on_load(self) -> None:
-        self.logger.info(f"{self.prefix} Loading config...")
         self.load_config()
-        self.session = requests.Session()
-        self._pending_checks = set()
-        self._lock = threading.Lock()
 
     def load_config(self) -> None:
-        cfg_path = os.path.join(self.data_folder, "config.toml")
-        default_cfg = """\
+        path = os.path.join(self.data_folder, "config.toml")
+        default = """\
 [api]
 server_key = "YOUR_SERVER_KEY"
-check_url = "https://minecraftpocket-servers.com/api/"
 
 [reward]
-commands = [
-  "give {player} diamond 1",
-  "say Thanks {player}, you just voted!"
-]
+commands = ["give {player} minecraft:diamond 1"]
 cooldown = 86400
 
 [messages]
-already_voted = "§cYou have already claimed your reward today!"
-reward_given = "§aThanks for voting! Here's your reward."
-not_voted = "§cYou haven't voted yet."
-api_error = "§cFailed to check voting status. Try again later."
-api_not_set = "§cVoting API not configured. Contact server owner."
-promo_messages = [
-  "§eVote server on MCPS & get cool reward!",
-  "§bVote daily for bonuses!",
-  "§eSupport us & vote today!"
+vote_link = "§a[VoteUs] §eVote for our server at §bhttps://minecraftpocket-servers.com/server/YOUR_ID/vote/"
+reward_given = "§a[VoteUs] Thanks for voting! Here's your reward."
+not_voted = "§a[VoteUs] §cYou haven't voted today!"
+already_claimed = "§a[VoteUs] §cYou already claimed your vote reward today!"
+api_error = "§cAPI error, contact server owner."
+cooldown_remaining = "§a[VoteUs] §cYou can vote again in {h}h {m}m {s}s."
+vote_detected = "§a[VoteUs] Use §e/claimvote §ato claim your reward."
+reward_command_failed = "§cFailed to execute reward command."
+reward_command_error = "§cError executing reward command."
+topvoters_header = "§6Top voters this month:"
+topvoters_error = "§cFailed to fetch top voters."
+
+[promo]
+messages = [
+  "§a[VoteUs] §eVote & support us /vote!",
+  "§a[VoteUs] §eGet rewards every vote!",
+  "§a[VoteUs] §eYour vote means a lot!"
 ]
+promo_interval_seconds = 120
 
-[voting]
-cleanup_interval = 60
+[autocheck]
+interval_seconds = 60
 """
-        if not os.path.exists(cfg_path):
-            os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
-            with open(cfg_path, "w", encoding="utf-8") as f:
-                f.write(default_cfg)
-            self.logger.info(f"{self.prefix} Default config.toml created.")
+        if not os.path.exists(path):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(default)
 
-        with open(cfg_path, "rb") as f:
-            self.voteus_config = tomllib.load(f)
-        self.logger.info(f"{self.prefix} Config loaded successfully.")
+        with open(path, "rb") as f:
+            self._config = tomllib.load(f)
+
+        # Initialize runtime state
         self._last_claim = {}
+        self._pending_votes = set()
+        self._claims_path = os.path.join(self.data_folder, "claims.json")
+        self._load_claims()
 
-    def on_enable(self) -> None:
-        self.logger.info(f"{self.prefix} Plugin enabled.")
-        api = self.voteus_config.get("api", {})
-        if not api.get("server_key") or api["server_key"] == "YOUR_SERVER_KEY":
-            self.logger.error(f"{self.prefix} server_key not set in config.toml!")
-        if not api.get("check_url"):
-            self.logger.error(f"{self.prefix} check_url not set in config.toml!")
-
-        # Schedule promo broadcast every 2 minutes (2400 ticks)
-        self.server.scheduler.run_task(self, self.broadcast_promo, delay=0, period=2400)
-
-    def on_disable(self) -> None:
-        self.logger.info(f"{self.prefix} Plugin disabled.")
+    def _load_claims(self) -> None:
         try:
-            if self.session:
-                self.session.close()
+            if os.path.exists(self._claims_path):
+                with open(self._claims_path, "r", encoding="utf-8") as f:
+                    self._last_claim = json.load(f)
+                    for k, v in list(self._last_claim.items()):
+                        try:
+                            self._last_claim[k] = float(v)
+                        except Exception:
+                            self._last_claim.pop(k, None)
+            else:
+                self._last_claim = {}
+        except Exception:
+            self._last_claim = {}
+
+    def _save_claims(self) -> None:
+        try:
+            with open(self._claims_path, "w", encoding="utf-8") as f:
+                json.dump(self._last_claim, f)
         except Exception:
             pass
 
+    def on_enable(self) -> None:
+        self.command_sender = CommandSenderWrapper(
+            sender=self.server.command_sender,
+            on_message=None
+        )
+        interval = self._config.get("promo", {}).get("promo_interval_seconds", 120)
+        ticks = max(1, int(interval)) * 20
+        self.server.scheduler.run_task(self, self.broadcast_promo, delay=0, period=ticks)
+
+        auto_interval = self._config.get("autocheck", {}).get("interval_seconds", 60)
+        auto_ticks = max(10, int(auto_interval)) * 20
+        self.server.scheduler.run_task(self, self._auto_detect_votes, delay=auto_ticks, period=auto_ticks)
+
+    def on_disable(self) -> None:
+        self._save_claims()
+
     def broadcast_promo(self) -> None:
-        promos = self.voteus_config.get("messages", {}).get("promo_messages", [])
-        if not promos or not self.server.online_players:
+        msgs = self._config.get("promo", {}).get("messages", [])
+        if not msgs or not self.server.online_players:
             return
-        promo = random.choice(promos)
+        promo = random.choice(msgs)
         self.server.broadcast_message(promo)
 
-    def on_command(self, sender: CommandSender, command: Command, args: List[str]) -> bool:
-        if not isinstance(sender, Player):
-            sender.send_message("This command is only for players.")
-            return True
+    def _format_remaining(self, seconds: float) -> str:
+        total = max(0, int(seconds))
+        m, s = divmod(total, 60)
+        h, m = divmod(m, 60)
+        template = self._config.get("messages", {}).get("cooldown_remaining",
+                                                       "§a[VoteUs] §cYou can vote again in {h}h {m}m {s}s.")
+        return template.format(h=h, m=m, s=s)
 
-        cmd = command.name.lower()
-        if cmd in ("claimvote", "vote"):
-            return self.handle_vote(sender)
-        return False
-
-    def handle_vote(self, player: Player) -> bool:
-        api = self.voteus_config.get("api", {})
-        msg = self.voteus_config.get("messages", {})
-        reward_cfg = self.voteus_config.get("reward", {})
-        cooldown = reward_cfg.get("cooldown", 86400)
-
-        if not api.get("server_key") or api["server_key"] == "YOUR_SERVER_KEY" or not api.get("check_url"):
-            player.send_message(msg.get("api_not_set"))
-            return True
-
-        now = time.time()
-        last = self._last_claim.get(player.name, 0)
-        if now - last < cooldown:
-            player.send_message(msg.get("already_voted"))
-            return True
-
-        with self._lock:
-            if player.name in self._pending_checks:
-                player.send_message("§ePlease wait, checking your vote status...")
-                return True
-            self._pending_checks.add(player.name)
-
-        # perform network call in background thread to avoid blocking server main thread
-        threading.Thread(target=self._check_vote, args=(player.name,), daemon=True).start()
-        player.send_message("§eChecking vote status...")
-        return True
-
-    def _check_vote(self, player_name: str) -> None:
-        api = self.voteus_config.get("api", {})
-        msg = self.voteus_config.get("messages", {})
-        url = f"{api['check_url']}?action=post&object=votes&element=claim&key={api['server_key']}&username={player_name}"
-        res_text = None
+    def _extract_nicknames_from_votes_response(self, data):
+        # idk im not sure about the structure
+        names = set()
         try:
-            sess = self.session or requests.Session()
-            resp = sess.get(url, timeout=5)
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, str):
+                        names.add(item.lower())
+                    elif isinstance(item, dict):
+                        for key in ("nickname", "nick", "player", "username", "name"):
+                            if key in item and item[key]:
+                                names.add(str(item[key]).lower())
+                                break
+            elif isinstance(data, dict):
+                for candidate in ("votes", "players", "voters", "latest", "data"):
+                    if candidate in data:
+                        return self._extract_nicknames_from_votes_response(data[candidate])
+                for k in data.keys():
+                    if isinstance(k, str):
+                        names.add(k.lower())
+        except Exception:
+            pass
+        return names
+
+    def _auto_detect_votes(self) -> None:
+        api_key = self._config["api"]["server_key"]
+        msgs = self._config.get("messages", {})
+        try:
+            resp = requests.get(
+                f"https://minecraftpocket-servers.com/api/?object=servers&element=votes&key={api_key}&format=json",
+                timeout=8
+            )
             if resp.status_code != 200:
-                self.logger.error(f"{self.prefix} API returned HTTP {resp.status_code} for {player_name}")
-                self.server.scheduler.run_task(self, lambda: self._send_player_message(player_name, msg.get("api_error")), delay=0)
                 return
-            res_text = resp.text.strip()
-            self.logger.info(f"{self.prefix} API response for {player_name}: {res_text}")
-        except Exception as e:
-            self.logger.error(f"{self.prefix} HTTP error for {player_name}: {e}")
-            self.server.scheduler.run_task(self, lambda: self._send_player_message(player_name, msg.get("api_error")), delay=0)
-            return
-        finally:
-            with self._lock:
-                self._pending_checks.discard(player_name)
+            data = resp.json()
+            voted_names = self._extract_nicknames_from_votes_response(data)
+            if not voted_names:
+                return
 
-        # schedule result handling on main thread
-        if res_text == "1":
-            self.server.scheduler.run_task(self, lambda: self._give_reward(player_name), delay=0)
-        elif res_text == "0":
-            self.server.scheduler.run_task(self, lambda: self._send_player_message(player_name, msg.get("not_voted")), delay=0)
-        else:
-            # treat any other response as already claimed / not eligible
-            self.server.scheduler.run_task(self, lambda: self._send_player_message(player_name, msg.get("already_voted")), delay=0)
+            cooldown = self._config["reward"]["cooldown"]
+            now = time.time()
+            for player in list(self.server.online_players):
+                try:
+                    name = player.name
+                    lname = name.lower()
+                    last = float(self._last_claim.get(name, 0))
+                    if now - last < cooldown or name in self._pending_votes:
+                        continue
+                    if lname in voted_names:
+                        self._pending_votes.add(name)
+                        player.send_message(msgs.get("vote_detected",
+                                                    "§a[VoteUs]Use §e/claimvote §ato claim your reward."))
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
-    def _find_online_player(self, name: str) -> Optional[Player]:
-        for p in self.server.online_players:
-            if p.name == name:
-                return p
-        return None
+    def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
+        if not isinstance(sender, Player):
+            sender.send_message("This command is for players only.")
+            return True
 
-    def _send_player_message(self, player_name: str, message: str) -> None:
-        p = self._find_online_player(player_name)
-        if p and message:
-            p.send_message(message)
+        name = sender.name
+        now = time.time()
+        api_key = self._config["api"]["server_key"]
+        msgs = self._config["messages"]
+        cooldown = self._config["reward"]["cooldown"]
 
-    def _give_reward(self, player_name: str) -> None:
-        player = self._find_online_player(player_name)
-        if not player:
-            self.logger.info(f"{self.prefix} Player {player_name} not online when applying reward.")
-            return
+        if command.name == "vote":
+            sender.send_message(msgs.get("vote_link"))
+            return True
 
-        for cmd_tpl in self.voteus_config["reward"]["commands"]:
-            cmd_str = cmd_tpl.format(player=player.name)
-            self.server.dispatch_command(self.server.console_sender, cmd_str)
+        if command.name == "claimvote":
+            last = float(self._last_claim.get(name, 0))
+            if now - last < cooldown:
+                remaining = cooldown - (now - last)
+                sender.send_message(msgs.get("already_claimed"))
+                sender.send_message(self._format_remaining(remaining))
+                return True
 
-        msg = self.voteus_config.get("messages", {})
-        player.send_message(msg.get("reward_given"))
-        self._last_claim[player.name] = time.time()
+            try:
+                resp = requests.get(
+                    f"https://minecraftpocket-servers.com/api/?action=post&object=votes&element=claim&key={api_key}&username={name}",
+                    timeout=8
+                )
+                res = resp.text.strip()
+                if res == "0":
+                    resp = requests.get(
+                        f"https://minecraftpocket-servers.com/api/?action=post&object=votes&element=claim&key={api_key}&username={name.lower()}",
+                        timeout=8
+                    )
+                    res = resp.text.strip()
+            except Exception:
+                sender.send_message(msgs.get("api_error"))
+                return True
+
+            if res == "1":
+                for cmd_tpl in self._config["reward"]["commands"]:
+                    cmd = cmd_tpl.format(player=name)
+                    try:
+                        self.server.dispatch_command(self.command_sender, cmd)
+                    except Exception:
+                        sender.send_message(msgs.get("reward_command_error", "§cError executing reward command."))
+                sender.send_message(msgs.get("reward_given"))
+                self._last_claim[name] = now
+                self._save_claims()
+                self._pending_votes.discard(name)
+            elif res == "0":
+                sender.send_message(msgs.get("not_voted"))
+            else:
+                sender.send_message(msgs.get("already_claimed"))
+            return True
+
+        if command.name == "topvoters":
+            try:
+                resp = requests.get(
+                    f"https://minecraftpocket-servers.com/api/?object=servers&element=voters&key={api_key}&month=current&format=json",
+                    timeout=8
+                )
+                data = resp.json()
+                sender.send_message(msgs.get("topvoters_header", "§6Top voters this month:"))
+                for i, v in enumerate(data.get("voters", []), start=1):
+                    sender.send_message(f"{i}. {v.get('nickname', v.get('nick', 'Unknown'))} – {v.get('votes', 0)} votes")
+            except Exception:
+                sender.send_message(msgs.get("topvoters_error", "§cFailed to fetch top voters."))
+            return True
+
+        return False
