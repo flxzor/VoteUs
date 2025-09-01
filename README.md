@@ -1,3 +1,9 @@
+> [!IMPORTANT]
+> **VoteUs Plugin** is currently **UNDER DEVELOPMENT**  
+> Features are not final and bugs are expected.  
+> Testing and feedback are appreciated!
+
+
 # VoteUs — Endstone Plugin (Python)
 
 A simple plugin to reward players for voting on voting sites (e.g., MCPS). Designed to run on Endstone (Python) with optimizations to avoid burdening the main thread.

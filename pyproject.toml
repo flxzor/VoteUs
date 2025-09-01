@@ -18,4 +18,4 @@ keywords = ["endstone", "plugin", "vote"]
 Homepage = "https://github.com/flxzor/VoteUs"
 
 [project.entry-points."endstone"]
-vote-us = "endstone_vote_us:VoteUsPlugin"  # Ubah menjadi vote-us untuk konsistensi
+vote-us = "endstone_vote_us:VoteUsPlugin"
