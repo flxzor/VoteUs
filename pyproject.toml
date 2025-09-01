@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "endstone-vote-us"
-version = "0.1.0"
-dependencies = ["requests"]
+version = "0.2.0"
+dependencies = ["requests", "toml"]
 authors = [
     { name = "Flxzor", email = "felixerlangga.contact@gmail.com" },
 ]
