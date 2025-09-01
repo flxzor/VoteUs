@@ -4,6 +4,11 @@
 > **VoteUs Plugin** is currently **UNDER DEVELOPMENT**.  
 > Features are not final, bugs are expected, and testing/feedback is appreciated!
 
+![GitHub Release](https://img.shields.io/github/v/release/flxzor/VoteUs)
+
+![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/flxzor/VoteUs/latest/total)
+
+
 A simple plugin to reward players for voting on Minecraft server listing sites [MinecraftPocket-Servers.com](https://minecraftpocket-servers.com). Built for **Endstone (Python)**.
 
 ---
